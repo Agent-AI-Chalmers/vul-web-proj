@@ -91,11 +91,10 @@ async def search_posts(q: str = ""):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # [v02] SQL INJECTION: Direct string formatting in search
     # [v04] REFLECTED XSS: Search query returned without escaping
-    query = f"SELECT * FROM posts WHERE (title LIKE '%{q}%' OR content LIKE '%{q}%') AND is_private = 0"
+    query = "SELECT * FROM posts WHERE (title LIKE ? OR content LIKE ?) AND is_private = 0"
     try:
-        cursor.execute(query)
+        cursor.execute(query, (f"%{q}%", f"%{q}%"))
         posts = [dict(row) for row in cursor.fetchall()]
         return {"query": q, "results": posts}
     finally:
