@@ -51,10 +51,10 @@ async def login(request: Request):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # [v01] SQL INJECTION: Direct string concatenation for login query
-    query = f"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'"
+    # Fixed: Use parameterized query to prevent SQL injection
+    query = "SELECT * FROM users WHERE username = ? AND password = ?"
     try:
-        cursor.execute(query)
+        cursor.execute(query, (username, password))
         user = cursor.fetchone()
     except Exception as e:
         # [v11] More info leak in db error
@@ -91,11 +91,12 @@ async def search_posts(q: str = ""):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # [v02] SQL INJECTION: Direct string formatting in search
+    # Fixed: Use parameterized query to prevent SQL injection
     # [v04] REFLECTED XSS: Search query returned without escaping
-    query = f"SELECT * FROM posts WHERE (title LIKE '%{q}%' OR content LIKE '%{q}%') AND is_private = 0"
+    query = "SELECT * FROM posts WHERE (title LIKE ? OR content LIKE ?) AND is_private = 0"
+    search_pattern = f"%{q}%"
     try:
-        cursor.execute(query)
+        cursor.execute(query, (search_pattern, search_pattern))
         posts = [dict(row) for row in cursor.fetchall()]
         return {"query": q, "results": posts}
     finally:
