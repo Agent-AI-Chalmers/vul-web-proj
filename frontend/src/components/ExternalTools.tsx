@@ -4,11 +4,43 @@ const ExternalTools: React.FC = () => {
     const [expression, setExpression] = useState<string>('');
     const [result, setResult] = useState<string>('');
 
+    const safeEvaluate = (expr: string): number | null => {
+        // Only allow numbers, operators, parentheses, spaces, and decimal points
+        const safePattern = /^[\d\s+\-*/().]+$/;
+        if (!safePattern.test(expr)) {
+            return null;
+        }
+        
+        // Additional check: no empty parentheses or unbalanced parentheses
+        let depth = 0;
+        for (const char of expr) {
+            if (char === '(') depth++;
+            if (char === ')') depth--;
+            if (depth < 0) return null;
+        }
+        if (depth !== 0) return null;
+
+        // Use Function constructor with restricted scope
+        try {
+            const evaluated = new Function('return ' + expr)();
+            if (typeof evaluated === 'number' && !isNaN(evaluated) && isFinite(evaluated)) {
+                return evaluated;
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    };
+
     const handleCalculate = () => {
         try {
-            // Evaluate mathematical expressions for internal tools
-            const res = eval(expression);
-            setResult(res.toString());
+            // Safely evaluate mathematical expressions
+            const res = safeEvaluate(expression);
+            if (res === null) {
+                setResult('Error: Invalid expression');
+            } else {
+                setResult(res.toString());
+            }
         } catch (e) {
             setResult('Error: ' + (e as Error).message);
         }
