@@ -6,8 +6,17 @@ const ExternalTools: React.FC = () => {
 
     const handleCalculate = () => {
         try {
-            // Evaluate mathematical expressions for internal tools
-            const res = eval(expression);
+            // Safe math expression parser - only allows numbers and basic operators
+            const safeEval = (expr: string): number => {
+                // Only allow digits, whitespace, decimal points, and basic math operators
+                const sanitized = expr.replace(/[^0-9+\-*/().%\s]/g, '');
+                if (sanitized !== expr.trim()) {
+                    throw new Error('Invalid characters in expression');
+                }
+                // Use Function constructor with restricted context for basic math only
+                return new Function('return ' + sanitized)();
+            };
+            const res = safeEval(expression);
             setResult(res.toString());
         } catch (e) {
             setResult('Error: ' + (e as Error).message);

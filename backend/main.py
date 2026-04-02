@@ -173,6 +173,47 @@ async def get_avatar(filename: str):
         return JSONResponse(status_code=404, content={"message": "Avatar not found."})
 
 import urllib.request
+import urllib.parse
+import ipaddress
+import socket
+
+def is_safe_url(url: str) -> bool:
+    """
+    Validates that a URL is safe to fetch:
+    - Only allows http and https schemes
+    - Blocks private/internal IP addresses
+    - Blocks localhost and cloud metadata endpoints
+    """
+    try:
+        parsed = urllib.parse.urlparse(url)
+        
+        # Only allow http and https schemes
+        if parsed.scheme not in ['http', 'https']:
+            return False
+        
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        
+        # Block localhost and common internal hostnames
+        blocked_hosts = ['localhost', '127.0.0.1', '0.0.0.0', '::1', 'metadata.google.internal', '169.254.169.254']
+        if hostname.lower() in blocked_hosts:
+            return False
+        
+        # Resolve hostname to IP and check if it's private
+        try:
+            ip_str = socket.gethostbyname(hostname)
+            ip = ipaddress.ip_address(ip_str)
+            # Block private, loopback, link-local, and reserved addresses
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return False
+        except (socket.gaierror, ValueError):
+            # If we can't resolve, block it
+            return False
+        
+        return True
+    except Exception:
+        return False
 
 # Utility for generating rich link previews
 @app.get("/api/utils/fetch_metadata")
@@ -181,9 +222,12 @@ async def fetch_url_metadata(target_url: str):
     Fetches external resource metadata from the provided URL.
     Useful for generating link previews.
     """
-    # Directly fetch content from remote URL for link rendering
+    # Validate URL before fetching to prevent SSRF
+    if not is_safe_url(target_url):
+        raise HTTPException(status_code=400, detail="Invalid or unsafe URL provided")
+    
     try:
-        with urllib.request.urlopen(target_url) as response:
+        with urllib.request.urlopen(target_url, timeout=5) as response:
             metadata = response.read(1024).decode()  # Just read the first KB
             return {"status": "success", "content_preview": metadata}
     except Exception as e:
