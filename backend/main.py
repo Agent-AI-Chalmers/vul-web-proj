@@ -51,10 +51,10 @@ async def login(request: Request):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # [v01] SQL INJECTION: Direct string concatenation for login query
-    query = f"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'"
+    # [v01] SQL INJECTION: Fixed with parameterized query
+    query = "SELECT * FROM users WHERE username = ? AND password = ?"
     try:
-        cursor.execute(query)
+        cursor.execute(query, (username, password))
         user = cursor.fetchone()
     except Exception as e:
         # [v11] More info leak in db error
@@ -91,11 +91,11 @@ async def search_posts(q: str = ""):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # [v02] SQL INJECTION: Direct string formatting in search
+    # [v02] SQL INJECTION: Fixed with parameterized query
     # [v04] REFLECTED XSS: Search query returned without escaping
-    query = f"SELECT * FROM posts WHERE (title LIKE '%{q}%' OR content LIKE '%{q}%') AND is_private = 0"
+    query = "SELECT * FROM posts WHERE (title LIKE ? OR content LIKE ?) AND is_private = 0"
     try:
-        cursor.execute(query)
+        cursor.execute(query, (f"%{q}%", f"%{q}%"))
         posts = [dict(row) for row in cursor.fetchall()]
         return {"query": q, "results": posts}
     finally:
@@ -186,3 +186,4 @@ if __name__ == "__main__":
     # with open("static/avatars/default.png", "wb") as f: f.write(b"")
     
     uvicorn.run(app, host="0.0.0.0", port=8000)
+0.0.0", port=8000)
