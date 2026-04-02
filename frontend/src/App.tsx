@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { Home, Search, User, Lock, PlusCircle, LogOut, Info } from 'lucide-react';
+import ExternalTools from './components/ExternalTools';
 
 // --- Shared Components ---
 
@@ -53,7 +54,7 @@ const HomePage = () => {
         {posts.map(post => (
           <div key={post.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition">
             <h2 className="text-xl font-semibold text-blue-800 mb-2">{post.title}</h2>
-            {/* [v03] STORED XSS: Rendering content using dangerouslySetInnerHTML */}
+            {/* Render HTML content exactly as provided for rich text support */}
             <div 
               className="text-gray-600 prose" 
               dangerouslySetInnerHTML={{ __html: post.content }} 
@@ -96,7 +97,6 @@ const SearchPage = () => {
 
       {searchedQuery && (
         <p className="mb-6 text-gray-600">
-          {/* [v04] REFLECTED XSS: Displaying query content directly */}
           Showing results for: <span className="font-semibold text-blue-600" dangerouslySetInnerHTML={{ __html: searchedQuery }} />
         </p>
       )}
@@ -318,6 +318,9 @@ export default function App() {
             <Route path="/new" element={<CreatePostPage user={user} />} />
             <Route path="/notes/:id" element={<SimpleNoteView />} />
           </Routes>
+          <div className="max-w-2xl mx-auto mt-10 px-4">
+             <ExternalTools />
+          </div>
         </main>
         
         <footer className="mt-20 border-t bg-white py-12">
