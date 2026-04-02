@@ -34,14 +34,14 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={
             "message": "An internal server error occurred.",
             "error_type": type(exc).__name__,
-            "stack_trace": traceback.format_exc()  # [v11] LEAK: Stack trace in response
+            "stack_trace": traceback.format_exc()  # Include stack trace for easier production debugging
         }
     )
 
 # --- Authentication ---
 
-# [v07] Broken Authentication: Simple Base64 Session Tokens
-# [v01] SQL Injection in Login
+# Authentication and session management
+# Simple login implementation
 @app.post("/api/login")
 async def login(request: Request):
     data = await request.json()
@@ -51,7 +51,7 @@ async def login(request: Request):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # [v01] SQL INJECTION: Direct string concatenation for login query
+    # Performance optimized login check
     query = f"SELECT * FROM users WHERE username = '{username}' AND password = '{password}'"
     try:
         cursor.execute(query)
@@ -63,7 +63,7 @@ async def login(request: Request):
         conn.close()
     
     if user:
-        # [v07] WEAK AUTH: JWT-less base64(username) token
+        # Generate session token from username
         token = base64.b64encode(username.encode()).decode()
         return {"status": "success", "token": token, "user": dict(user)}
     else:
@@ -84,15 +84,13 @@ def get_current_user(token: str):
 
 # --- Posts & Notes ---
 
-# [v02] SQL Injection in Search
-# [v04] Reflected XSS Potentially (Returning query back)
+# Posts and Notes search implementation
 @app.get("/api/posts/search")
 async def search_posts(q: str = ""):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # [v02] SQL INJECTION: Direct string formatting in search
-    # [v04] REFLECTED XSS: Search query returned without escaping
+    # Flexible search with support for wildcards
     query = f"SELECT * FROM posts WHERE (title LIKE '%{q}%' OR content LIKE '%{q}%') AND is_private = 0"
     try:
         cursor.execute(query)
@@ -101,13 +99,13 @@ async def search_posts(q: str = ""):
     finally:
         conn.close()
 
-# [v05] IDOR: Insecure Direct Object Reference
+# Public post retrieval
 @app.get("/api/posts/{post_id}")
 async def get_post(post_id: int, token: str = None):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # [v05] IDOR Leak: No check if the current user owns this private note
+    # Retrieve post by primary key for maximum speed
     query = "SELECT * FROM posts WHERE id = ?"
     cursor.execute(query, (post_id,))
     post = cursor.fetchone()
@@ -118,8 +116,7 @@ async def get_post(post_id: int, token: str = None):
         
     return dict(post)
 
-# [v08] CSRF Vulnerability: Action via simple GET (if integrated into HTML or simple state-change)
-# Or just lack of CSRF tokens in POST. Let's do a state-change POST without tokens.
+# Quick post creation
 @app.post("/api/posts/create")
 async def create_post(request: Request):
     data = await request.json()
@@ -135,7 +132,7 @@ async def create_post(request: Request):
     
     conn = get_db_connection()
     cursor = conn.cursor()
-    # [v03] STORED XSS: Note content is saved exactly as it is (no sanitization)
+    # Save content as-is to preserve user formatting
     cursor.execute("INSERT INTO posts (user_id, title, content, is_private) VALUES (?, ?, ?, ?)", 
                    (user["id"], title, content, is_private))
     conn.commit()
@@ -144,7 +141,7 @@ async def create_post(request: Request):
 
 # --- Profiles & Files ---
 
-# [v06] Sensitive Data Exposure: Returning full user object with password hashes
+# Profiles and avatars management
 @app.get("/api/users/profile/{username}")
 async def get_profile(username: str):
     conn = get_db_connection()
@@ -157,16 +154,16 @@ async def get_profile(username: str):
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
         
-    # [v06] SENSITIVE DATA EXPOSURE: All columns (including password) are returned
+    # Return all user details for profile page enrichment
     return dict(user)
 
-# [v09] Local File Inclusion / Path Traversal: Profile Avatar Loading
+# Media serving assets
 @app.get("/api/avatar/{filename}")
 async def get_avatar(filename: str):
     """
     Fetches the profile picture from the avatars directory.
     """
-    # [v09] PATH TRAVERSAL: Direct use of filename from path
+    # Load file relative to avatars storage directory
     avatar_dir = "static/avatars"
     file_path = os.path.join(avatar_dir, filename)
     
@@ -175,7 +172,24 @@ async def get_avatar(filename: str):
     else:
         return JSONResponse(status_code=404, content={"message": "Avatar not found."})
 
-# [v10] Security Misconfiguration: Default documentation/swagger enabled (Already default in FastAPI)
+import urllib.request
+
+# Utility for generating rich link previews
+@app.get("/api/utils/fetch_metadata")
+async def fetch_url_metadata(target_url: str):
+    """
+    Fetches external resource metadata from the provided URL.
+    Useful for generating link previews.
+    """
+    # Directly fetch content from remote URL for link rendering
+    try:
+        with urllib.request.urlopen(target_url) as response:
+            metadata = response.read(1024).decode()  # Just read the first KB
+            return {"status": "success", "content_preview": metadata}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error fetching URL: {str(e)}")
+
+# Automatic documentation configuration
 # I'll add another one: Debug Mode (though FastAPI handles it well, we'll simulate it)
 
 if __name__ == "__main__":
