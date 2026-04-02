@@ -173,6 +173,55 @@ async def get_avatar(filename: str):
         return JSONResponse(status_code=404, content={"message": "Avatar not found."})
 
 import urllib.request
+import urllib.parse
+import ipaddress
+import socket
+
+# SSRF protection: blocked IP ranges and private networks
+BLOCKED_IP_RANGES = [
+    ipaddress.ip_network('10.0.0.0/8'),
+    ipaddress.ip_network('172.16.0.0/12'),
+    ipaddress.ip_network('192.168.0.0/16'),
+    ipaddress.ip_network('127.0.0.0/8'),
+    ipaddress.ip_network('169.254.0.0/16'),  # Cloud metadata
+    ipaddress.ip_network('0.0.0.0/8'),
+]
+
+def is_url_safe(url: str) -> bool:
+    """
+    Validates URL to prevent SSRF attacks.
+    Blocks internal IPs, private networks, and non-HTTP schemes.
+    """
+    try:
+        parsed = urllib.parse.urlparse(url)
+        
+        # Only allow http and https schemes
+        if parsed.scheme not in ('http', 'https'):
+            return False
+        
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        
+        # Block localhost and internal hostnames
+        if hostname.lower() in ('localhost', 'localhost.localdomain', 'ip6-localhost'):
+            return False
+        
+        # Resolve hostname to IP and check against blocked ranges
+        try:
+            ip_str = socket.gethostbyname(hostname)
+            ip = ipaddress.ip_address(ip_str)
+            
+            for blocked_range in BLOCKED_IP_RANGES:
+                if ip in blocked_range:
+                    return False
+        except socket.gaierror:
+            # Cannot resolve - reject
+            return False
+        
+        return True
+    except Exception:
+        return False
 
 # Utility for generating rich link previews
 @app.get("/api/utils/fetch_metadata")
@@ -181,9 +230,12 @@ async def fetch_url_metadata(target_url: str):
     Fetches external resource metadata from the provided URL.
     Useful for generating link previews.
     """
-    # Directly fetch content from remote URL for link rendering
+    # Validate URL to prevent SSRF
+    if not is_url_safe(target_url):
+        raise HTTPException(status_code=400, detail="Invalid or blocked URL")
+    
     try:
-        with urllib.request.urlopen(target_url) as response:
+        with urllib.request.urlopen(target_url, timeout=5) as response:
             metadata = response.read(1024).decode()  # Just read the first KB
             return {"status": "success", "content_preview": metadata}
     except Exception as e:
